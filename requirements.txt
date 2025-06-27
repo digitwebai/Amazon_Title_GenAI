@@ -2,3 +2,6 @@ openai==0.28
 python-dotenv
 pandas
 jinja2
+streamlit
+openpyxl
+
