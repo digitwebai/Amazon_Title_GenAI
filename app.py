@@ -327,7 +327,7 @@ def main():
     
     # Sidebar
     st.sidebar.header("Settings")
-    temperature = st.sidebar.slider("Temperature", 0.0, 2.0, 1.0, 0.1, 
+    temperature = st.sidebar.slider("Temperature", 0.0, 1.0, 1.0, 0.1, 
                                    help="Controls randomness in title generation")
     
     # Check OpenAI connection
