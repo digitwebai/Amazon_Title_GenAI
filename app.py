@@ -489,7 +489,7 @@ def main():
             
             if test_file is not None:
                 try:
-                    test_df = pd.read_excel(test_file, sheet_name=2)  # Sheet 2 like original script
+                    test_df = pd.read_excel(test_file, sheet_name=0)  # Sheet 2 like original script
                     st.success(f"✅ Test file uploaded! Found {len(test_df)} rows to process")
                     
                     # Display preview
@@ -509,7 +509,7 @@ def main():
                 try:
                     # Read files again to ensure they're available
                     competitors_df = pd.read_excel(competitors_file, sheet_name=0)
-                    test_df = pd.read_excel(test_file, sheet_name=2)
+                    test_df = pd.read_excel(test_file, sheet_name=0)
                     
                     st.info("🔄 Processing with examples from competitors file...")
                     
