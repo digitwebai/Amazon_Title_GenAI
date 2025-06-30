@@ -192,7 +192,7 @@ if __name__ == "__main__":
 
   # Read the Excel file (first sheet by default)
   df = pd.read_excel(excel_file, sheet_name=0) #0=BULB
-  df_test = pd.read_excel(test_file, sheet_name=2) #0=title
+  df_test = pd.read_excel(test_file, sheet_name=0) #0=title
 
   new_df = df[['Title', 'Bullet Points']]
 
