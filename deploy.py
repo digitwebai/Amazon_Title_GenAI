@@ -88,13 +88,13 @@ def run_app():
             return
         
         print("✅ app.py found")
-        print("🌐 Starting server at http://localhost:8502")
+        print("🌐 Starting server at http://localhost:8503")
         print("📝 Press Ctrl+C to stop the server")
         
         # Run streamlit
         subprocess.run([
             sys.executable, '-m', 'streamlit', 'run', 'app.py',
-            '--server.port', '8502',
+            '--server.port', '8503',
             '--server.address', 'localhost'
         ])
         
