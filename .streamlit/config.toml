@@ -1,6 +1,6 @@
 [server]
 port = 8501
-address = "localhost"
+# address = "localhost"  # Commented out for Streamlit Cloud compatibility
 enableCORS = false
 enableXsrfProtection = false
 maxUploadSize = 200
@@ -12,4 +12,8 @@ gatherUsageStats = false
 primaryColor = "#FF9900"
 backgroundColor = "#FFFFFF"
 secondaryBackgroundColor = "#F0F2F6"
-textColor = "#262730" 
+textColor = "#262730"
+
+# Streamlit Cloud specific settings
+[global]
+developmentMode = false 

@@ -4,12 +4,9 @@ import openai
 from typing import List, Dict
 from jinja2 import Template
 import os
-from dotenv import load_dotenv
 import io
 import time
-
-# Load environment variables
-load_dotenv()
+import tempfile
 
 # Page configuration
 st.set_page_config(
@@ -24,7 +21,7 @@ INPUT_COST_PER_1M = 0.06   # USD/1M
 OUTPUT_COST_PER_1M = 2.40  # USD/1M
 
 def initialize_openai():
-    """Initialize OpenAI client with API key"""
+    """Initialize OpenAI client with API key - Streamlit Cloud optimized"""
     # Try to get API key from different sources
     api_key = os.getenv('OPENAI_API_KEY')
     
@@ -215,27 +212,29 @@ def process_batch_data_with_examples(examples_df: pd.DataFrame, test_df: pd.Data
         
         if title:
             results.append({
-                'old_title': old_title,
-                'bullet_points': description,
-                'new_title': title,
-                'cost': cost,
-                'input_tokens': input_tokens,
-                'output_tokens': output_tokens
+                'Original Title': old_title,
+                'Description': description,
+                'Generated Title': title,
+                'Cost (USD)': cost,
+                'Input Tokens': input_tokens,
+                'Output Tokens': output_tokens
             })
             total_cost += cost
-        else:
-            st.error(f"Row {idx + 1}: Failed to generate title")
         
+        # Update progress
         progress_bar.progress((idx + 1) / len(test_df))
-        time.sleep(0.1)  # Small delay to prevent rate limiting
     
     progress_bar.empty()
     status_text.empty()
     
-    return pd.DataFrame(results), total_cost
+    if results:
+        st.success(f"✅ Generated {len(results)} titles successfully!")
+        st.info(f"💰 Total cost: ${total_cost:.4f}")
+    
+    return pd.DataFrame(results)
 
 def generate_title_with_examples(old_title: str, description: str, examples: List[Dict], temperature: float = 1) -> tuple:
-    """Generate a single title using custom examples from competitors file"""
+    """Generate a single title using few-shot examples"""
     try:
         prompt = create_prompt(old_title, description, examples)
         
@@ -278,7 +277,7 @@ def generate_title_with_examples(old_title: str, description: str, examples: Lis
         return None, None, None, None
 
 def process_batch_data(df: pd.DataFrame) -> pd.DataFrame:
-    """Process batch data and generate titles (original method)"""
+    """Process batch data without examples"""
     results = []
     total_cost = 0
     
@@ -292,7 +291,9 @@ def process_batch_data(df: pd.DataFrame) -> pd.DataFrame:
         old_title = ''
         description = ''
         
-        if 'Title' in row:
+        if 'Title ' in row:  # Note the space after 'Title'
+            old_title = str(row['Title ']) if pd.notna(row['Title ']) else ''
+        elif 'Title' in row:
             old_title = str(row['Title']) if pd.notna(row['Title']) else ''
         elif 'title' in row:
             old_title = str(row['title']) if pd.notna(row['title']) else ''
@@ -308,47 +309,52 @@ def process_batch_data(df: pd.DataFrame) -> pd.DataFrame:
             st.warning(f"Row {idx + 1}: No description found")
             continue
             
+        # Generate title
         title, cost, input_tokens, output_tokens = generate_title(old_title, description)
         
         if title:
             results.append({
-                'old_title': old_title,
-                'bullet_points': description,
-                'new_title': title,
-                'cost': cost,
-                'input_tokens': input_tokens,
-                'output_tokens': output_tokens
+                'Original Title': old_title,
+                'Description': description,
+                'Generated Title': title,
+                'Cost (USD)': cost,
+                'Input Tokens': input_tokens,
+                'Output Tokens': output_tokens
             })
             total_cost += cost
-        else:
-            st.error(f"Row {idx + 1}: Failed to generate title")
         
+        # Update progress
         progress_bar.progress((idx + 1) / len(df))
-        time.sleep(0.1)  # Small delay to prevent rate limiting
     
     progress_bar.empty()
     status_text.empty()
     
-    return pd.DataFrame(results), total_cost
+    if results:
+        st.success(f"✅ Generated {len(results)} titles successfully!")
+        st.info(f"💰 Total cost: ${total_cost:.4f}")
+    
+    return pd.DataFrame(results)
 
 def main():
-    st.title("🛒 Amazon Title Generator")
-    st.markdown("Generate compelling Amazon product titles using Few-Shot Learning with GPT-4")
+    """Main Streamlit application"""
+    
+    # Initialize OpenAI
+    if not initialize_openai():
+        st.stop()
     
     # Sidebar
-    st.sidebar.header("Settings")
-    temperature = st.sidebar.slider("Temperature", 0.0, 1.0, 1.0, 0.1, 
-                                   help="Controls randomness in title generation")
-    
-    # Check OpenAI connection
-    if st.sidebar.button("Test OpenAI Connection"):
-        initialize_openai()
+    st.sidebar.title("🛒 Amazon Title Generator")
+    st.sidebar.markdown("Generate compelling Amazon product titles using AI")
     
     # Main content
-    tab1, tab2, tab3, tab4 = st.tabs(["Single Title", "Batch Processing", "Advanced Batch (2 Files)", "About"])
+    st.title("🛒 Amazon Title Generator")
+    st.markdown("Generate SEO-optimized Amazon product titles using GPT-4")
+    
+    # Tabs
+    tab1, tab2, tab3, tab4 = st.tabs(["Single Title", "Batch Processing", "About", "Settings"])
     
     with tab1:
-        st.header("Generate Single Title")
+        st.header("🎯 Single Title Generation")
         
         col1, col2 = st.columns(2)
         
@@ -357,243 +363,190 @@ def main():
                                    placeholder="Enter the original product title...",
                                    height=100)
             
-        with col2:
             description = st.text_area("Product Description", 
-                                     placeholder="Enter product description or bullet points...",
-                                     height=100)
+                                     placeholder="Enter product description, bullet points, or features...",
+                                     height=200)
+            
+            temperature = st.slider("Creativity Level", 0.0, 2.0, 1.0, 0.1,
+                                  help="Higher values = more creative, Lower values = more consistent")
         
-        if st.button("Generate Title", type="primary"):
-            if not description:
-                st.error("Please enter a product description")
-            else:
-                # Check OpenAI connection first
-                if not initialize_openai():
-                    st.stop()
-                
-                title, cost, input_tokens, output_tokens = generate_title(
-                    old_title, description, temperature
-                )
-                
-                if title:
-                    st.success("✅ Title generated successfully!")
+        with col2:
+            if st.button("🚀 Generate Title", type="primary"):
+                if description.strip():
+                    with st.spinner("Generating title..."):
+                        title, cost, input_tokens, output_tokens = generate_title(
+                            old_title, description, temperature
+                        )
                     
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        st.subheader("Generated Title")
-                        st.write(f"**{title}**")
-                        
-                        if old_title:
-                            st.subheader("Original Title")
-                            st.write(old_title)
-                    
-                    with col2:
-                        st.subheader("Cost Analysis")
-                        st.metric("Total Cost", f"${cost:.6f}")
-                        st.metric("Input Tokens", input_tokens)
-                        st.metric("Output Tokens", output_tokens)
-                        
-                        st.subheader("Title Statistics")
-                        st.metric("Title Length", len(title))
-                        st.metric("First 80 chars", len(title[:80]))
-    
-    with tab2:
-        st.header("Batch Processing (Single File)")
-        
-        uploaded_file = st.file_uploader(
-            "Upload Excel file with 'Title' and 'Bullet Points' columns",
-            type=['xlsx', 'xls']
-        )
-        
-        if uploaded_file is not None:
-            try:
-                df = pd.read_excel(uploaded_file)
-                st.success(f"✅ File uploaded successfully! Found {len(df)} rows")
-                
-                # Display preview
-                st.subheader("Data Preview")
-                st.dataframe(df.head(), use_container_width=True)
-                
-                # Show column names for debugging
-                st.subheader("Column Names")
-                st.write(f"Available columns: {list(df.columns)}")
-                
-                if st.button("Process All Titles", type="primary"):
-                    # Check OpenAI connection first
-                    if not initialize_openai():
-                        st.stop()
-                    
-                    results_df, total_cost = process_batch_data(df)
-                    
-                    if not results_df.empty:
-                        st.success(f"✅ Processed {len(results_df)} titles successfully!")
+                    if title:
+                        st.success("✅ Title Generated Successfully!")
                         
                         # Display results
-                        st.subheader("Generated Titles")
-                        st.dataframe(results_df, use_container_width=True)
+                        st.subheader("Generated Title:")
+                        st.write(f"**{title}**")
                         
-                        # Cost summary
-                        col1, col2, col3 = st.columns(3)
-                        with col1:
-                            st.metric("Total Cost", f"${total_cost:.6f}")
-                        with col2:
-                            st.metric("Average Cost per Title", f"${total_cost/len(results_df):.6f}")
-                        with col3:
-                            st.metric("Titles Generated", len(results_df))
+                        # Character count
+                        char_count = len(title)
+                        st.metric("Character Count", char_count)
                         
-                        # Download button
-                        output = io.BytesIO()
-                        with pd.ExcelWriter(output, engine='openpyxl') as writer:
-                            results_df.to_excel(writer, index=False, sheet_name='Generated Titles')
-                        output.seek(0)
+                        if char_count > 200:
+                            st.warning("⚠️ Title exceeds 200 characters (Amazon recommendation)")
                         
-                        st.download_button(
-                            label="Download Results",
-                            data=output.getvalue(),
-                            file_name="amazon_titles_generated.xlsx",
-                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                        )
-                    else:
-                        st.error("No titles were generated successfully")
+                        # Cost analysis
+                        st.subheader("💰 Cost Analysis:")
+                        col_a, col_b, col_c = st.columns(3)
+                        with col_a:
+                            st.metric("Cost", f"${cost:.4f}")
+                        with col_b:
+                            st.metric("Input Tokens", input_tokens)
+                        with col_c:
+                            st.metric("Output Tokens", output_tokens)
                         
-            except Exception as e:
-                st.error(f"Error reading file: {str(e)}")
-                st.info("💡 Make sure your Excel file has the correct format with 'Title' and 'Bullet Points' columns.")
+                        # Copy button
+                        st.code(title, language=None)
+                        
+                else:
+                    st.error("❌ Please enter a product description")
     
-    with tab3:
-        st.header("Advanced Batch Processing (Two Files)")
-        st.markdown("""
-        **Upload two Excel files:**
-        1. **Competitors File**: Contains examples with 'Title' and 'Bullet Points' columns (like Amazon_Competitors.xlsx)
-        2. **Test File**: Contains data to process with 'Title ' (with space) and 'Bullet Points' columns (like Amazon_Data.xlsx)
-        """)
+    with tab2:
+        st.header("📊 Batch Processing")
+        
+        # File upload section
+        st.subheader("📁 Upload Files")
         
         col1, col2 = st.columns(2)
         
         with col1:
-            st.subheader("Competitors File (Examples)")
+            st.markdown("**Competitors File (Optional)**")
             competitors_file = st.file_uploader(
-                "Upload competitors/examples Excel file",
+                "Upload Excel file with examples",
                 type=['xlsx', 'xls'],
-                key="competitors"
+                help="File should contain 'Title' and 'Bullet Points' columns"
             )
-            
-            if competitors_file is not None:
-                try:
-                    competitors_df = pd.read_excel(competitors_file, sheet_name=0)
-                    st.success(f"✅ Competitors file uploaded! Found {len(competitors_df)} examples")
-                    
-                    # Display preview
-                    st.subheader("Competitors Preview")
-                    st.dataframe(competitors_df.head(), use_container_width=True)
-                    
-                except Exception as e:
-                    st.error(f"Error reading competitors file: {str(e)}")
         
         with col2:
-            st.subheader("Test File (Data to Process)")
+            st.markdown("**Test Data File**")
             test_file = st.file_uploader(
-                "Upload test data Excel file",
+                "Upload Excel file to process",
                 type=['xlsx', 'xls'],
-                key="test"
+                help="File should contain 'Title' (optional) and 'Bullet Points' columns"
             )
-            
-            if test_file is not None:
-                try:
-                    test_df = pd.read_excel(test_file, sheet_name=0)  # Sheet 2 like original script
-                    st.success(f"✅ Test file uploaded! Found {len(test_df)} rows to process")
-                    
-                    # Display preview
-                    st.subheader("Test Data Preview")
-                    st.dataframe(test_df.head(), use_container_width=True)
-                    
-                except Exception as e:
-                    st.error(f"Error reading test file: {str(e)}")
         
-        # Process button
-        if competitors_file is not None and test_file is not None:
-            if st.button("Process with Examples", type="primary", key="process_advanced"):
-                # Check OpenAI connection first
-                if not initialize_openai():
-                    st.stop()
+        # Process files
+        if test_file is not None:
+            try:
+                test_df = pd.read_excel(test_file)
+                st.success(f"✅ Test file loaded: {len(test_df)} rows")
                 
-                try:
-                    # Read files again to ensure they're available
-                    competitors_df = pd.read_excel(competitors_file, sheet_name=0)
-                    test_df = pd.read_excel(test_file, sheet_name=0)
-                    
-                    st.info("🔄 Processing with examples from competitors file...")
-                    
-                    results_df, total_cost = process_batch_data_with_examples(competitors_df, test_df)
+                # Show sample data
+                with st.expander("📋 Sample Data"):
+                    st.dataframe(test_df.head())
+                
+                # Process options
+                st.subheader("⚙️ Processing Options")
+                
+                use_examples = st.checkbox("Use examples from competitors file", 
+                                         value=competitors_file is not None,
+                                         help="Use few-shot learning with competitor examples")
+                
+                if st.button("🚀 Process All Titles", type="primary"):
+                    if use_examples and competitors_file is not None:
+                        try:
+                            examples_df = pd.read_excel(competitors_file)
+                            st.success(f"✅ Competitors file loaded: {len(examples_df)} examples")
+                            
+                            results_df = process_batch_data_with_examples(examples_df, test_df)
+                        except Exception as e:
+                            st.error(f"❌ Error loading competitors file: {e}")
+                            results_df = process_batch_data(test_df)
+                    else:
+                        results_df = process_batch_data(test_df)
                     
                     if not results_df.empty:
-                        st.success(f"✅ Processed {len(results_df)} titles successfully!")
+                        st.subheader("📊 Results")
+                        st.dataframe(results_df)
                         
-                        # Display results
-                        st.subheader("Generated Titles")
-                        st.dataframe(results_df, use_container_width=True)
-                        
-                        # Cost summary
-                        col1, col2, col3 = st.columns(3)
-                        with col1:
-                            st.metric("Total Cost", f"${total_cost:.6f}")
-                        with col2:
-                            st.metric("Average Cost per Title", f"${total_cost/len(results_df):.6f}")
-                        with col3:
-                            st.metric("Titles Generated", len(results_df))
-                        
-                        # Download button
+                        # Download results
                         output = io.BytesIO()
                         with pd.ExcelWriter(output, engine='openpyxl') as writer:
                             results_df.to_excel(writer, index=False, sheet_name='Generated Titles')
+                        
                         output.seek(0)
                         
                         st.download_button(
-                            label="Download Results (results.xlsx)",
+                            label="📥 Download Results (Excel)",
                             data=output.getvalue(),
-                            file_name="results.xlsx",
+                            file_name="amazon_titles_generated.xlsx",
                             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                         )
-                    else:
-                        st.error("No titles were generated successfully")
                         
-                except Exception as e:
-                    st.error(f"Error processing files: {str(e)}")
+            except Exception as e:
+                st.error(f"❌ Error loading file: {e}")
+                st.info("💡 Make sure your Excel file has the correct format:")
+                st.markdown("""
+                1. **Competitors File**: Contains examples with 'Title' and 'Bullet Points' columns (like Amazon_Competitors.xlsx)
+                2. **Test File**: Contains data to process with 'Title ' (with space) and 'Bullet Points' columns (like Amazon_Data.xlsx)
+                """)
+    
+    with tab3:
+        st.header("ℹ️ About")
+        
+        st.markdown("""
+        ### 🎯 What is this app?
+        This Amazon Title Generator uses **Few-Shot Learning (FSL)** with GPT-4 to create compelling, 
+        SEO-optimized product titles that follow Amazon's guidelines.
+        
+        ### 🚀 Key Features
+        - **Single Title Generation**: Generate titles for individual products
+        - **Batch Processing**: Process multiple products from Excel files
+        - **Cost Tracking**: Monitor API usage and costs
+        - **Amazon SEO Optimized**: Follows Amazon's title guidelines
+        
+        ### 📊 Amazon Title Guidelines
+        - **Length**: Under 200 characters
+        - **Keywords**: Critical keywords in first 80 characters
+        - **Branding**: Avoid brand name conflicts
+        - **Specificity**: Include shape and pack details
+        - **Uniqueness**: Avoid synonym repetition
+        
+        ### 💰 Cost Information
+        Using GPT-4o-mini for cost efficiency:
+        - **Input**: $0.06 per 1M tokens
+        - **Output**: $2.40 per 1M tokens
+        
+        ### 🔧 Technology Stack
+        - **AI Model**: OpenAI GPT-4o-mini
+        - **Learning Method**: Few-Shot Learning (FSL)
+        - **Web Framework**: Streamlit
+        - **Template Engine**: Jinja2
+        - **Data Processing**: Pandas
+        """)
     
     with tab4:
-        st.header("About")
-        st.markdown("""
-        ### Amazon Title Generator
+        st.header("⚙️ Settings & Information")
         
-        This application uses Few-Shot Learning (FSL) with GPT-4 to generate compelling Amazon product titles.
+        # API Status
+        st.subheader("🔌 API Status")
+        if initialize_openai():
+            st.success("✅ OpenAI API Connected")
+        else:
+            st.error("❌ OpenAI API Not Connected")
         
-        **Features:**
-        - Single title generation with cost tracking
-        - Batch processing for multiple products
-        - Advanced batch processing with two files (like original script)
-        - Optimized for Amazon SEO requirements
-        - Cost-effective using GPT-4o-mini
+        # Cost Information
+        st.subheader("💰 Cost Information")
+        col1, col2 = st.columns(2)
+        with col1:
+            st.metric("Input Cost", f"${INPUT_COST_PER_1M}/1M tokens")
+        with col2:
+            st.metric("Output Cost", f"${OUTPUT_COST_PER_1M}/1M tokens")
         
-        **Advanced Batch Processing:**
-        - **Competitors File**: Contains example titles and descriptions for few-shot learning
-        - **Test File**: Contains data to process (sheet 2, like original script)
-        - Uses examples from competitors file to improve title generation quality
-        
-        **Guidelines:**
-        - Titles under 200 characters
-        - Critical keywords in first 80 characters
-        - Amazon-specific optimization
-        - Avoid brand name conflicts
-        
-        **Technology:**
-        - OpenAI GPT-4o-mini
-        - Few-Shot Learning
-        - Jinja2 templating
-        - Streamlit web interface
-        
-        **Troubleshooting:**
-        - If you get connection errors, check your OpenAI API key
-        - Ensure you have sufficient API credits
-        - Try the "Test OpenAI Connection" button in the sidebar
+        # App Information
+        st.subheader("📱 App Information")
+        st.info("""
+        **Version**: 1.0.0
+        **Framework**: Streamlit
+        **Model**: GPT-4o-mini
+        **Deployment**: Streamlit Cloud
         """)
 
 if __name__ == "__main__":
