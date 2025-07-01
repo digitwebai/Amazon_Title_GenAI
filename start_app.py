@@ -11,7 +11,7 @@ def start_app():
     """Start the Streamlit app"""
     print("🚀 Starting Amazon Title Generator...")
     print("📝 The app will open in your browser automatically")
-    print("🌐 If it doesn't open, go to: http://localhost:8501")
+    print("🌐 If it doesn't open, go to: http://localhost:8503")
     print("⏹️  Press Ctrl+C to stop the app")
     print("-" * 50)
     
@@ -19,7 +19,7 @@ def start_app():
         # Start Streamlit app
         subprocess.run([
             sys.executable, "-m", "streamlit", "run", "app.py",
-            "--server.port", "8502",
+            "--server.port", "8503",
             "--server.address", "localhost"
         ])
     except KeyboardInterrupt:
