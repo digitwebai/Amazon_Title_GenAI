@@ -19,7 +19,7 @@ def start_app():
         # Start Streamlit app
         subprocess.run([
             sys.executable, "-m", "streamlit", "run", "app.py",
-            "--server.port", "8501",
+            "--server.port", "8502",
             "--server.address", "localhost"
         ])
     except KeyboardInterrupt:
